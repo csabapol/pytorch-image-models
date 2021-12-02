@@ -176,6 +176,7 @@ def create_loader(
         use_multi_epochs_loader=False,
         persistent_workers=True,
         worker_seeding='all',
+        sampler=None
 ):
     re_num_splits = 0
     if re_split:
@@ -204,7 +205,7 @@ def create_loader(
         separate=num_aug_splits > 0,
     )
 
-    sampler = None
+#     sampler = None
     if distributed and not isinstance(dataset, torch.utils.data.IterableDataset):
         if is_training:
             if num_aug_repeats:

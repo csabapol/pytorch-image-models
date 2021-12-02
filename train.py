@@ -312,6 +312,74 @@ def _parse_args():
     return args, args_text
 
 
+
+from torchvision.io import read_image
+import torch
+from torch.utils.data import Dataset
+from torchvision import datasets
+from torchvision.transforms import ToTensor
+from PIL import Image
+import numpy as np
+from torchvision import datasets
+from torchvision import transforms
+from torch.utils.data.sampler import SubsetRandomSampler
+from pathlib import Path
+
+class CustomBinary(Dataset):
+    def __init__(self, data_dir, transform=None):
+        data_dir = Path(data_dir)
+        self.true = list(data_dir.joinpath('true').rglob('*'))
+        self.false = list(data_dir.joinpath('false').rglob('*'))
+#         self.height = 48
+#         self.width = 48
+        self.transform = transform
+
+    def __getitem__(self, index):
+        # This method should return only 1 sample and label 
+        # (according to "index"), not the whole dataset
+        # So probably something like this for you:
+        if index < len(self.true):
+            image = np.array(Image.open(self.true[index]))
+#             image = read_image(str(self.true[index]))
+            label = True
+        else:
+            image = np.array(Image.open(self.false[index-len(self.true)]))
+#             image = read_image(str(self.false[index-len(self.true)]))
+            label = False
+            
+        return image, label
+
+    def __len__(self):
+        return len(self.true)+len(self.false)
+    
+def load_dataset(data_dir, batch_size=50, validation_split=.2, shuffle_dataset=True, random_seed=42):
+    dataset = CustomBinary(data_dir)
+
+#     batch_size = 50
+#     validation_split = .2
+#     shuffle_dataset = True
+#     random_seed= 42
+
+    # Creating data indices for training and validation splits:
+    dataset_size = len(dataset)
+    indices = list(range(dataset_size))
+    split = int(np.floor(validation_split * dataset_size))
+    if shuffle_dataset :
+        np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:], indices[:split]
+
+    # Creating PT data samplers and loaders:
+    train_sampler = SubsetRandomSampler(train_indices)
+    valid_sampler = SubsetRandomSampler(val_indices)
+
+#     train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, 
+#                                                sampler=train_sampler)
+#     validation_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+#                                                     sampler=valid_sampler)
+
+    return train_sampler, valid_sampler
+
 def main():
     setup_default_logging()
     args, args_text = _parse_args()
@@ -489,6 +557,10 @@ def main():
         batch_size=args.batch_size, repeats=args.epoch_repeats)
     dataset_eval = create_dataset(
         args.dataset, root=args.data_dir, split=args.val_split, is_training=False, batch_size=args.batch_size)
+    
+    print('Pretrained: ', args.pretrained)
+    
+    train_sampler, valid_sampler = load_dataset(args.data_dir, batch_size=args.batch_size, validation_split=.2, shuffle_dataset=True, random_seed=42)
 
     # setup mixup / cutmix
     collate_fn = None
@@ -516,6 +588,7 @@ def main():
     loader_train = create_loader(
         dataset_train,
         input_size=data_config['input_size'],
+        sampler = train_sampler,
         batch_size=args.batch_size,
         is_training=True,
         use_prefetcher=args.prefetcher,
@@ -546,6 +619,7 @@ def main():
     loader_eval = create_loader(
         dataset_eval,
         input_size=data_config['input_size'],
+        sampler = valid_sampler,
         batch_size=args.validation_batch_size or args.batch_size,
         is_training=False,
         use_prefetcher=args.prefetcher,
@@ -557,6 +631,10 @@ def main():
         crop_pct=data_config['crop_pct'],
         pin_memory=args.pin_mem,
     )
+    
+    
+#     import pdb
+#     pdb.set_trace()
 
     # setup loss function
     if args.jsd_loss:

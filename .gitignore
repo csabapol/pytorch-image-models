@@ -106,3 +106,7 @@ venv.bak/
 *.gz
 Untitled.ipynb
 Testing notebook.ipynb
+
+custom_output/
+output/
+data
