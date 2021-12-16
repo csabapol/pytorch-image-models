@@ -63,6 +63,37 @@ from timm.data import create_dataset, create_loader, resolve_data_config, Mixup,
 from timm.utils import *
 from timm.loss import *
 
+import torchvision
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# functions to show an image
+
+
+def imshow(img):
+    print(img.size())
+    print(img.min(), img.max())
+    img = img / 2 + 0.5     # unnormalize
+    npimg = img.cpu().numpy()
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.show()
+    
+def imshow_cpu(img):
+    print(img.shape)
+    print(img.min(), img.max())
+    img = img/255     # unnormalize
+    plt.imshow(np.transpose(img, (1, 2, 0)))
+    plt.show()
+    
+def imshow_pil(img):
+    img = np.array(img)
+    print(img.shape)
+    print(img.min(), img.max())
+    img = img     # unnormalize
+    plt.imshow(img)
+    plt.show()
+
 
 # from torchvision.io import read_image
 # import torch
@@ -152,6 +183,8 @@ def main():
     config = resolve_data_config(vars(args), model=model)
     model, test_time_pool = (model, False) if args.no_test_pool else apply_test_time_pool(model, config)
 
+    print('Test time pool',test_time_pool)
+    
     if args.num_gpu > 1:
         model = torch.nn.DataParallel(model, device_ids=list(range(args.num_gpu))).cuda()
     else:
@@ -165,14 +198,31 @@ def main():
 #         batch_size=args.batch_size, repeats=args.epoch_repeats)
     
     dataset_eval = create_dataset(
-        args.dataset, root=args.data, split='test', is_training=False, batch_size=args.batch_size)
-        
+        args.dataset, root=args.data, split='test', is_training=False, batch_size=args.batch_size, transform=None)
+    
+#     imshow_pil(dataset_eval[0][0])
+#     import pdb
+#     pdb.set_trace()
         
 #     train_sampler, valid_sampler = load_dataset(args.data, batch_size=args.batch_size, validation_split=.01, shuffle_dataset=True, random_seed=42)
+
+    print(config['crop_pct'])
+    crop_pct = config['crop_pct']
+    
+    fos = config['input_size']
+    print(fos)
+    print(fos[-2:])
+    
+    import math
+    
+    scale_size = int(math.floor(fos[-2:][0] / crop_pct))
+    
+    print(scale_size)
 
     loader = create_loader(
 #         ImageDataset(args.data),
         dataset_eval,
+        no_aug=True,
 #         sampler = valid_sampler,
         input_size=config['input_size'],
         batch_size=args.batch_size,
@@ -181,12 +231,44 @@ def main():
         mean=config['mean'],
         std=config['std'],
         num_workers=args.workers,
-        crop_pct=1.0 if test_time_pool else config['crop_pct'])
+        crop_pct=None)
+#         crop_pct=1.0 if test_time_pool else config['crop_pct'])
+    
+    print('Dataset len {} dataloader len {}'.format(len(dataset_eval), len(loader)))
 
     model.eval()
     
-    import pdb
+#     count_True = 0
+#     count_False = 0
+#     for img, target in dataset_eval:
+#         if target:
+#             count_True = count_True+1
+#         else:
+#             count_False = count_False+1
+            
+
+            
+#     count_True_l = 0
+#     count_False_l = 0
+#     for batch_idx, (input, target) in enumerate(loader):
+#         count_True_l = count_True_l+torch.sum(target)
+#         count_False_l = count_False_l+(len(target)-torch.sum(target))
+    
+    classes = ['false', 'true']
+    correct_pred = {classname: 0 for classname in classes}
+    total_pred = {classname: 0 for classname in classes}
+    
+    filenames = loader.dataset.filenames(basename=False)
+    
+
+#     imshow_cpu(loader.dataset[0][0])
+
+
+#     import pdb
 #     pdb.set_trace()
+    
+    correct = 0
+    total = 0
 
     k = min(args.topk, args.num_classes)
     batch_time = AverageMeter()
@@ -201,6 +283,30 @@ def main():
             input = input.cuda()
             target = target.cuda()
             labels = model(input)
+            
+            
+#             imshow(torchvision.utils.make_grid(input))
+#             print(filenames[batch_idx])
+            
+#             print('GroundTruth: ', ' '.join('%5s' % classes[labels[j]] for j in range(4)))
+
+#             import pdb
+#             pdb.set_trace()
+            
+            
+            _, predictions = torch.max(labels, 1)
+            
+            total += labels.size(0)
+            correct += (predictions == target).sum().item()
+            
+            # collect the correct predictions for each class
+            for label, prediction in zip(target, predictions):
+                if target == prediction:
+                    correct_pred[classes[label]] += 1
+                total_pred[classes[label]] += 1
+            
+#             import pdb
+#             pdb.set_trace()
             
             acc1, acc5 = accuracy(labels, target, topk=(1, 5))
             
@@ -220,12 +326,22 @@ def main():
                 _logger.info('Predict: [{0}/{1}] Time {batch_time.val:.3f} ({batch_time.avg:.3f})  Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})'.format(
                     batch_idx, len(loader), batch_time=batch_time, top1=top1_m))
 
+    
+    # print accuracy for each class
+    for classname, correct_count in correct_pred.items():
+        class_accuracy = 100 * float(correct_count) / total_pred[classname]
+        print("Accuracy for class {:5s} is: {:.1f} %".format(classname,
+                                                       class_accuracy))
+    print('Accuracy of the network on the test images: %d %%' % (
+        100 * correct / total))
+    
+    
     topk_ids = np.concatenate(topk_ids, axis=0)
     
 #     pdb.set_trace()
 
     with open(os.path.join(args.output_dir, './topk_ids.csv'), 'w') as out_file:
-        filenames = loader.dataset.filenames(basename=True)
+        filenames = loader.dataset.filenames(basename=False)
         for filename, label, tt in zip(filenames, topk_ids, all_target):
             out_file.write('{0},{1},{2}\n'.format(
                 filename, ','.join([ str(v) for v in label]), str(tt)))

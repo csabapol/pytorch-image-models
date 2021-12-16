@@ -312,6 +312,16 @@ def _parse_args():
     return args, args_text
 
 
+# import matplotlib.pyplot as plt
+# import numpy as np
+
+# def imshow_cpu(img):
+#     print(img.shape)
+#     print(img.min(), img.max())
+#     img = img/255     # unnormalize
+#     plt.imshow(np.transpose(img, (1, 2, 0)))
+#     plt.show()
+
 
 # from torchvision.io import read_image
 # import torch
@@ -632,7 +642,8 @@ def main():
         pin_memory=args.pin_mem,
     )
     
-    
+#     imshow_cpu(loader_train.dataset[0][0])
+
 #     import pdb
 #     pdb.set_trace()
 
