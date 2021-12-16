@@ -26,7 +26,7 @@ def transforms_noaug_train(
         interpolation = 'bilinear'
     tfl = [
         transforms.Resize(img_size, interpolation=str_to_interp_mode(interpolation)),
-        transforms.CenterCrop(img_size)
+#         transforms.CenterCrop(img_size)
     ]
     if use_prefetcher:
         # prefetcher and collate will handle tensor conversion and norm
@@ -147,8 +147,10 @@ def transforms_imagenet_eval(
         scale_size = int(math.floor(img_size / crop_pct))
 
     tfl = [
-        transforms.Resize(scale_size, interpolation=str_to_interp_mode(interpolation)),
-        transforms.CenterCrop(img_size),
+        transforms.Resize(img_size, interpolation=str_to_interp_mode(interpolation))
+#         transforms.Resize(img_size)
+#         transforms.Resize(scale_size, interpolation=str_to_interp_mode(interpolation)),
+#         transforms.CenterCrop(img_size),
     ]
     if use_prefetcher:
         # prefetcher and collate will handle tensor conversion and norm
